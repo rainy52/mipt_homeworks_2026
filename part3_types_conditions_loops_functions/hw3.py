@@ -115,14 +115,14 @@ def extract_amount(amount: str) -> float | None:
     :return: float или None, если не является числом.
     :rtype: float | None
     """
-    amount = amount.replace(",", ".")
+    normalized_amount = amount.replace(",", ".")
 
-    if amount.startswith("-"):
-        if amount.count("-") > 1:
+    if normalized_amount.startswith("-"):
+        if normalized_amount.count("-") > 1:
             return None
-        amount_str = amount[1:]
+        amount_str = normalized_amount[1:]
     else:
-        amount_str = amount
+        amount_str = normalized_amount
 
     if amount_str.count(".") > 1:
         return None
@@ -131,12 +131,12 @@ def extract_amount(amount: str) -> float | None:
         if symbol not in "0123456789.":
             return None
 
-    amount = float(amount)
+    amount_value = float(normalized_amount)
 
-    if amount <= 0:
+    if amount_value <= 0:
         return -1
 
-    return amount
+    return amount_value
 
 
 def validate_category(category_input: str) -> bool:
@@ -270,7 +270,7 @@ def is_same_month(date1: DATA_DATE, date2: DATA_DATE) -> bool:
     :rtype: bool
     """
     first_check = date1[1] == date2[1]
-    second_check = date2[2] == date2[2]
+    second_check = date1[2] == date2[2]
     return first_check and second_check
 
 
@@ -333,10 +333,7 @@ def process_expenses_by_category(date: DATA_DATE) -> dict[str, float]:
         if not transaction:
             continue
 
-        if validate_transaction(transaction, date):
-            continue
-
-        expenses_by_category = process_expenses_of_transaction(transaction, date, expenses_by_category)
+        expenses_by_category = process_transaction_details(transaction, date, expenses_by_category)
 
     return expenses_by_category
 
@@ -354,10 +351,7 @@ def calculate_month_stats(date: DATA_DATE) -> RESULT_OF_CALC:
         if not transaction:
             continue
 
-        if validate_transaction(transaction, date):
-            continue
-
-        income, expenses = process_expenses_of_transaction(transaction, date)
+        income, expenses = process_transaction(transaction, date)
         month_income += income
         month_expenses += expenses
 
@@ -524,7 +518,8 @@ def dispatch_command() -> bool:
 
 
 def main() -> None:
-    while 1 == 1:
+    true = True
+    while true:
         dispatch_command()
 
 
