@@ -48,6 +48,7 @@ EXPENSE_CATEGORIES = {
 
 financial_transactions_storage: list[dict[str, Any]] = []
 
+
 def is_leap_year(year: int) -> bool:
     """
     Для заданного года определяет: високосный (True) или невисокосный (False).
@@ -208,6 +209,7 @@ def handle_income_command(input_parts: list[str]) -> None:
         return
 
     print(income_handler(amount, input_parts[2]))
+
 
 def cost_handler(category_name: str, amount: float, income_date: str) -> str:
     """
