@@ -139,10 +139,7 @@ def is_valid_float(amount: str) -> bool:
     if integer_part and not integer_part.isdigit():
         return False
 
-    if fractional_part and not fractional_part.isdigit():
-        return False
-
-    return True
+    return not fractional_part or fractional_part.isdigit()
 
 
 def parse_date_argument(maybe_date: Date | str) -> Date | None:
