@@ -3,6 +3,8 @@ from __future__ import annotations
 
 from typing import Any
 
+# fmt: off
+
 UNKNOWN_COMMAND_MSG = "Unknown command!"
 NONPOSITIVE_VALUE_MSG = "Value must be grater than zero!"
 INCORRECT_DATE_MSG = "Invalid date!"
@@ -656,5 +658,6 @@ def main() -> None:
         listen(command)
 
 
+# fmt: on
 if __name__ == "__main__":
     main()
