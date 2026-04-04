@@ -1,13 +1,33 @@
 #!/usr/bin/env python
+from __future__ import annotations
 
 from typing import Any
+
+# fmt: off
 
 UNKNOWN_COMMAND_MSG = "Unknown command!"
 NONPOSITIVE_VALUE_MSG = "Value must be grater than zero!"
 INCORRECT_DATE_MSG = "Invalid date!"
 NOT_EXISTS_CATEGORY = "Category not exists!"
 OP_SUCCESS_MSG = "Added"
+AMOUNT_KEY = "amount"
+DATE_KEY = "date"
+CATEGORY_KEY = "category"
+INCOME_COMMAND = "income"
+COST_COMMAND = "cost"
+STATS_COMMAND = "stats"
 
+DATE_LENGTH = 3
+FEBRUARY_MONTH_NUMBER = 2
+MONTHS_IN_YEAR = 12
+MONTH_LAST_DAY = (
+    31, 28, 31, 30, 31, 30,
+    31, 31, 30, 31, 30, 31
+)
+INCOME_ARGS_LENGTH = 2
+CATEGORY_LAYER_COUNT = 2
+COST_ARGS_LENGTH = 3
+STATS_ARGS_LENGTH = 1
 
 EXPENSE_CATEGORIES = {
     "Food": ("Supermarket", "Restaurants", "FastFood", "Coffee", "Delivery"),
@@ -23,6 +43,7 @@ EXPENSE_CATEGORIES = {
 
 
 financial_transactions_storage: list[dict[str, Any]] = []
+Date = tuple[int, int, int]
 
 
 def is_leap_year(year: int) -> bool:
@@ -33,40 +54,626 @@ def is_leap_year(year: int) -> bool:
     :return: Значение високосности.
     :rtype: bool
     """
-    return bool(year)  # Change this
+    if year % 4 == 0 and year % 100 != 0:
+        return True
+    return year % 400 == 0
 
 
-def extract_date(maybe_dt: str) -> tuple[int, int, int] | None:
+def get_days_in_month(month: int, year: int) -> int:
+    """
+        Для заданного месяца и года определяет последний день месяца
+
+        :param int month: Номер месяца
+        :param int year: Номер года
+        :return: Количество дней в месяце
+        :rtype: int
+    """
+    if month == FEBRUARY_MONTH_NUMBER:
+        if is_leap_year(year):
+            return 29
+        return 28
+    return MONTH_LAST_DAY[month - 1]
+
+
+def extract_date(maybe_dt: str) -> Date | None:
     """
     Парсит дату формата DD-MM-YYYY из строки.
 
     :param str maybe_dt: Проверяемая строка
-    :return: typle формата (день, месяц, год) или None, если дата неправильная.
+    :return: tuple формата (день, месяц, год) или None, если дата неправильная.
     :rtype: tuple[int, int, int] | None
     """
+    raw_date_parts = maybe_dt.split("-")
+    if len(raw_date_parts) != DATE_LENGTH:
+        return None
+
+    try:
+        date_parts = [int(part) for part in raw_date_parts]
+    except ValueError:
+        return None
+
+    day, month, year = date_parts
+    if not (0 < month <= MONTHS_IN_YEAR):
+        return None
+
+    if not (0 < day <= get_days_in_month(month, year)):
+        return None
+
+    return day, month, year
 
 
-def income_handler(amount: float, income_date: str) -> str:
-    financial_transactions_storage.append({"amount": amount, "date": income_date})
+def extract_amount(amount: str) -> float | None:
+    """
+        Парсит стоимость из строки.
+
+        :param str amount: Проверяемая строка
+        :return: float или None, если не является числом.
+        :rtype: float | None
+    """
+    normalized_amount = amount.strip().replace(",", ".")
+    if not is_valid_float(normalized_amount):
+        return None
+
+    parsed_amount = float(normalized_amount)
+    if parsed_amount <= 0:
+        return None
+    return parsed_amount
+
+
+def is_valid_float(amount: str) -> bool:
+    """
+        Проверяет, что строка конвертируется в float (является числом)
+
+        :param str amount: Проверяемая строка
+        :rtype: bool
+    """
+    if not amount or amount.count(".") > 1:
+        return False
+
+    amount_parts = amount.split(".")
+    if len(amount_parts) == 1:
+        return amount_parts[0].isdigit()
+
+    integer_part, fractional_part = amount_parts
+    if not integer_part and not fractional_part:
+        return False
+
+    if integer_part and not integer_part.isdigit():
+        return False
+
+    return not fractional_part or fractional_part.isdigit()
+
+
+def parse_date_argument(maybe_date: Date | str) -> Date | None:
+    """
+        Приводит дату к tuple-формату
+
+        :param tuple[int, int, int] | str maybe_date: Дата в одном из поддерживаемых форматов
+        :rtype: tuple[int, int, int] | None
+    """
+    if isinstance(maybe_date, str):
+        return extract_date(maybe_date)
+    return maybe_date
+
+
+def save_transaction(transaction: dict[str, Any]) -> None:
+    """
+        Сохраняет транзакцию в хранилище
+
+        :param dict[str, Any] transaction: Данные транзакции
+        :rtype: None
+    """
+    financial_transactions_storage.append(transaction)
+
+
+def save_income(amount: float, income_date: Date) -> None:
+    """
+        Сохраняет доход в хранилище
+
+        :param float amount: Сумма
+        :param tuple[int, int, int] income_date: Дата
+        :rtype: None
+    """
+    save_transaction({AMOUNT_KEY: amount, DATE_KEY: income_date})
+
+
+def save_cost(category_name: str, amount: float, cost_date: Date) -> None:
+    """
+        Сохраняет расход в хранилище
+
+        :param str category_name: Категория
+        :param float amount: Сумма
+        :param tuple[int, int, int] cost_date: Дата
+        :rtype: None
+    """
+    save_transaction({
+        CATEGORY_KEY: category_name,
+        AMOUNT_KEY: amount,
+        DATE_KEY: cost_date,
+    })
+
+
+def income_handler(amount: float, income_date: Date | str) -> str:
+    """
+        Вносит данные в базу при использовании команды income
+
+    :param int amount: Сумма
+        :param tuple[int, int, int] income_date: Дата
+        :rtype: str
+    """
+    if not isinstance(amount, (float, int)) or amount <= 0:
+        save_transaction({})
+        return NONPOSITIVE_VALUE_MSG
+
+    parsed_income_date = parse_date_argument(income_date)
+    if parsed_income_date is None:
+        save_transaction({})
+        return INCORRECT_DATE_MSG
+
+    save_income(amount, parsed_income_date)
     return OP_SUCCESS_MSG
 
 
-def cost_handler(category_name: str, amount: float, income_date: str) -> str:
-    financial_transactions_storage.append({"category": category_name, "amount": amount, "date": income_date})
+def listen(command: str) -> None:
+    """
+        Первичный обработчик команд
+
+        :param str command: Строка команды
+        :rtype: None
+    """
+    command_line = command.strip().split()
+    if not command_line:
+        print(UNKNOWN_COMMAND_MSG)
+        return
+
+    if command_line[0].lower() == INCOME_COMMAND:
+        income_listener(command_line[1:])
+    elif command_line[0].lower() == COST_COMMAND:
+        cost_listener(command_line[1:])
+    elif command_line[0].lower() == STATS_COMMAND:
+        stats_listener(command_line[1:])
+    else:
+        print(UNKNOWN_COMMAND_MSG)
+
+
+def income_listener(args: list[str]) -> None:
+    """
+        Обработка команды income
+
+        :param list[str] args: Аргументы команды
+        :rtype: None
+    """
+    if len(args) != INCOME_ARGS_LENGTH:
+        print(UNKNOWN_COMMAND_MSG)
+        return
+
+    amount = extract_amount(args[0])
+    if amount is None:
+        print(NONPOSITIVE_VALUE_MSG)
+        return
+
+    date = extract_date(args[1])
+    if date is None:
+        print(INCORRECT_DATE_MSG)
+        return
+
+    print(income_handler(amount, date))
+
+
+def is_category_exists(category_name: str) -> bool:
+    """
+        Проверка, существует ли такая категория
+
+        :param str category_name: Проверяемая категроия
+        :rtype: bool
+    """
+    category_layers = category_name.split("::")
+    if len(category_layers) != CATEGORY_LAYER_COUNT:
+        return False
+
+    main_category, child_category = category_layers
+    return main_category in EXPENSE_CATEGORIES and child_category in EXPENSE_CATEGORIES[main_category]
+
+
+def get_child_category(category_name: str) -> str:
+    """
+        Возвращает дочернюю категорию
+
+        :param str category_name: Проверяемая категроия
+        :rtype: str
+    """
+    return category_name.split("::")[-1]
+
+
+def cost_handler(category_name: str, amount: float, income_date: Date | str) -> str:
+    """
+        Вносит данные в базу при использовании команды cost
+
+        :param str category_name: Название категории
+        :param float amount: Сумма
+    :param tuple[int, int, int] income_date: Дата
+        :rtype: str
+    """
+    if not is_category_exists(category_name):
+        save_transaction({})
+        return NOT_EXISTS_CATEGORY
+
+    if not isinstance(amount, (float, int)) or amount <= 0:
+        save_transaction({})
+        return NONPOSITIVE_VALUE_MSG
+
+    parsed_income_date = parse_date_argument(income_date)
+    if parsed_income_date is None:
+        save_transaction({})
+        return INCORRECT_DATE_MSG
+
+    save_cost(category_name, amount, parsed_income_date)
     return OP_SUCCESS_MSG
 
 
 def cost_categories_handler() -> str:
-    return "\n".join({})
+    """
+        Обработка команды cost categories
+    """
+    return "\n".join([
+        f"{main_category}::{child_category}"
+        for main_category, child_categories in EXPENSE_CATEGORIES.items()
+        for child_category in child_categories
+    ])
 
 
-def stats_handler(report_date: str) -> str:
-    return f"Statistic for {report_date}"
+def parse_cost_command_args(args: list[str]) -> tuple[str, float, Date] | None:
+    """
+        Валидирует аргументы команды cost
+
+        :param list[str] args: Аргументы команды
+        :rtype: tuple[str, float, tuple[int, int, int]] | None
+    """
+    if len(args) == COST_ARGS_LENGTH:
+        category_name = args[0]
+        if is_category_exists(category_name):
+            amount = extract_amount(args[1])
+            if amount is not None:
+                date = extract_date(args[2])
+                if date is not None:
+                    return category_name, amount, date
+
+                print(INCORRECT_DATE_MSG)
+                return None
+
+            print(NONPOSITIVE_VALUE_MSG)
+            return None
+
+        print(NOT_EXISTS_CATEGORY)
+        print(cost_categories_handler())
+        return None
+
+    print(UNKNOWN_COMMAND_MSG)
+    return None
+
+
+def cost_listener(args: list[str]) -> None:
+    """
+        Обработка команды cost
+
+        :param list[str] args: Аргументы команды
+        :rtype: None
+    """
+    if not args:
+        print(UNKNOWN_COMMAND_MSG)
+        return
+
+    if args[0].lower() == "categories" and len(args) == 1:
+        print(cost_categories_handler())
+        return
+
+    parsed_args = parse_cost_command_args(args)
+    if parsed_args is None:
+        return
+
+    category_name, amount, date = parsed_args
+    print(cost_handler(category_name, amount, date))
+
+
+def stats_listener(args: list[str]) -> None:
+    """
+        Обработка команды stats
+
+        :param list[str] args: Аргументы команды
+        :rtype: None
+    """
+    if len(args) != STATS_ARGS_LENGTH:
+        print(UNKNOWN_COMMAND_MSG)
+        return
+
+    date = extract_date(args[0])
+    if date is None:
+        print(INCORRECT_DATE_MSG)
+        return
+
+    print(stats_handler(date))
+
+
+def get_day(date: Date) -> int:
+    """
+        Возвращает день из даты
+
+        :param tuple[int, int, int] date: Дата
+        :rtype: int
+    """
+    return date[0]
+
+
+def get_month(date: Date) -> int:
+    """
+        Возвращает месяц из даты
+
+        :param tuple[int, int, int] date: Дата
+        :rtype: int
+    """
+    return date[1]
+
+
+def get_year(date: Date) -> int:
+    """
+        Возвращает год из даты
+
+        :param tuple[int, int, int] date: Дата
+        :rtype: int
+    """
+    return date[2]
+
+
+def beautify_date(date: Date) -> str:
+    """
+        Приводит дату к читаемому виду
+
+        :param tuple[int, int, int] date: Дата
+        :rtype: str
+    """
+    day = get_day(date)
+    month = get_month(date)
+    year = get_year(date)
+    return f"{day:02d}-{month:02d}-{year:04d}"
+
+
+def get_category_sort_key(item: tuple[str, float]) -> str:
+    """
+        Возвращает ключ сортировки для категорий
+
+        :param tuple[str, float] item: Пара категория-сумма
+        :rtype: str
+    """
+    category_name, _ = item
+    return category_name.lower()
+
+
+def print_stats_by_categories(data: dict[str, float]) -> None:
+    """
+        Приводит хранящиеся траты по категориям к читаемому виду
+
+        :param dict[str, float] data: Данные
+        :rtype: None
+    """
+    categories = sorted(data.items(), key=get_category_sort_key)
+
+    for index, (category, amount) in enumerate(categories, start=1):
+        print(f"{index}. {category}: {format_amount(amount)}")
+
+
+def get_stats_by_categories(data: dict[str, float]) -> str:
+    """
+        Приводит хранящиеся траты по категориям к читаемому виду
+
+        :param dict[str, float] data: Данные
+        :rtype: str
+    """
+    categories = sorted(data.items(), key=get_category_sort_key)
+
+    return "\n".join([
+        f"{index}. {category}: {format_amount(amount)}"
+        for index, (category, amount) in enumerate(categories, start=1)
+    ])
+
+
+def is_same_month(first_date: Date, second_date: Date) -> bool:
+    """
+        Проверяет, что даты находятся в одном месяце одного года
+
+        :param tuple[int, int, int] first_date: Первая дата
+        :param tuple[int, int, int] second_date: Вторая дата
+        :rtype: bool
+    """
+    first_month = get_month(first_date)
+    second_month = get_month(second_date)
+    if first_month != second_month:
+        return False
+    return get_year(first_date) == get_year(second_date)
+
+
+def is_date_not_later(first_date: Date, second_date: Date) -> bool:
+    """
+        Проверяет, что первая дата не позже второй
+
+        :param tuple[int, int, int] first_date: Первая дата
+        :param tuple[int, int, int] second_date: Вторая дата
+        :rtype: bool
+    """
+    first_date_parts = (get_year(first_date), get_month(first_date), get_day(first_date))
+    second_date_parts = (get_year(second_date), get_month(second_date), get_day(second_date))
+    return first_date_parts <= second_date_parts
+
+
+def has_transaction_date(transaction: dict[str, Any]) -> bool:
+    """
+        Проверяет наличие даты в транзакции
+
+        :param dict[str, Any] transaction: Транзакция
+        :rtype: bool
+    """
+    return DATE_KEY in transaction
+
+
+def is_expense(transaction: dict[str, Any]) -> bool:
+    """
+        Проверяет, является ли транзакция расходом
+
+        :param dict[str, Any] transaction: Транзакция
+        :rtype: bool
+    """
+    return CATEGORY_KEY in transaction
+
+
+def is_transaction_in_report_period(transaction: dict[str, Any], report_date: Date) -> bool:
+    """
+        Проверяет, попадает ли транзакция в отчетный месяц
+
+        :param dict[str, Any] transaction: Транзакция
+        :param tuple[int, int, int] report_date: Дата отчета
+        :rtype: bool
+    """
+    if not has_transaction_date(transaction):
+        return False
+
+    transaction_date = transaction[DATE_KEY]
+    if not is_same_month(transaction_date, report_date):
+        return False
+    return is_date_not_later(transaction_date, report_date)
+
+
+def calculate_total_capital(report_date: Date) -> float:
+    """
+        Расчет накопленной суммы
+
+        :rtype: float
+    """
+    total_capital = float(0)
+    for transaction in financial_transactions_storage:
+        if not has_transaction_date(transaction):
+            continue
+
+        if not is_date_not_later(transaction[DATE_KEY], report_date):
+            continue
+
+        amount = transaction[AMOUNT_KEY]
+        if is_expense(transaction):
+            total_capital -= amount
+        else:
+            total_capital += amount
+    return total_capital
+
+
+def calculate_income_expenses(transaction: dict[str, Any], date: Date) -> tuple[float, float]:
+    """
+        Вычисление статистики за дату.
+        Возвращается: income, expenses.
+
+        :param dict[str, Any] transaction: Транзакция
+        :param tuple[int, int, int] date: Дата
+        :rtype: tuple[float, float]
+    """
+    if not is_transaction_in_report_period(transaction, date):
+        return float(0), float(0)
+
+    amount = transaction[AMOUNT_KEY]
+    if is_expense(transaction):
+        return float(0), amount
+    return amount, float(0)
+
+
+def get_data(report_date: Date) -> dict[str, float]:
+    """
+        Собирает статистику по категориям за месяц
+
+        :param tuple[int, int, int] report_date: Дата отчета
+        :rtype: dict[str, float]
+    """
+    data: dict[str, float] = {}
+    for transaction in financial_transactions_storage:
+        if not is_expense(transaction):
+            continue
+
+        if not is_transaction_in_report_period(transaction, report_date):
+            continue
+
+        child_category = get_child_category(transaction[CATEGORY_KEY])
+        category_total = data.get(child_category, float(0))
+        data[child_category] = category_total + transaction[AMOUNT_KEY]
+    return data
+
+
+def format_amount(amount: float) -> str:
+    """
+        Форматирует число для вывода
+
+        :param float amount: Сумма
+        :rtype: str
+    """
+    return f"{amount:.2f}"
+
+
+def calculate_stats(date: Date) -> tuple[float, float]:
+    """
+        Вычисление статистики за дату.
+        Возвращается: income, expenses.
+
+        :param tuple[int, int, int] date: Дата
+        :rtype: tuple[float, float]
+    """
+    total_income = float(0)
+    total_expenses = float(0)
+    for transaction in financial_transactions_storage:
+        income, expenses = calculate_income_expenses(transaction, date)
+        total_income += income
+        total_expenses += expenses
+    return total_income, total_expenses
+
+
+def get_result_type(income: float, expenses: float) -> str:
+    """
+        Определяет тип финансового результата
+
+        :param float income: Доходы
+        :param float expenses: Расходы
+        :rtype: str
+    """
+    if income - expenses < 0:
+        return "loss"
+    return "profit"
+
+
+def stats_handler(report_date: Date | str) -> str:
+    """
+        Вывод данных команды stats
+
+        :param tuple[int, int, int] | str report_date: Дата, за которую нужно получить отчет
+        :rtype: str
+    """
+    parsed_report_date = parse_date_argument(report_date)
+    if parsed_report_date is None:
+        return INCORRECT_DATE_MSG
+
+    income, expenses = calculate_stats(parsed_report_date)
+    result_type = get_result_type(income, expenses)
+    month_result = format_amount(abs(income - expenses))
+
+    return "\n".join([
+        f"Your statistics as of {beautify_date(parsed_report_date)}:",
+        f"Total capital: {format_amount(calculate_total_capital(parsed_report_date))} rubles",
+        f"This month, the {result_type} amounted to {month_result} rubles.",
+        f"Income: {format_amount(income)} rubles",
+        f"Expenses: {format_amount(expenses)} rubles",
+        "",
+        "Details (category: amount):",
+        get_stats_by_categories(get_data(parsed_report_date)),
+    ])
 
 
 def main() -> None:
-    """Ваш код здесь"""
+    for command in iter(input, ""):
+        listen(command)
 
 
+# fmt: on
 if __name__ == "__main__":
     main()
