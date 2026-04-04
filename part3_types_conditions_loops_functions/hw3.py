@@ -373,7 +373,7 @@ def stats_listener(args: list[str]) -> None:
         print(INCORRECT_DATE_MSG)
         return
 
-    stats_handler(date)
+    print(stats_handler(date))
 
 
 def get_day(date: Date) -> int:
@@ -441,6 +441,21 @@ def print_stats_by_categories(data: dict[str, float]) -> None:
 
     for index, (category, amount) in enumerate(categories, start=1):
         print(f"{index}. {category}: {format_amount(amount)}")
+
+
+def get_stats_by_categories(data: dict[str, float]) -> str:
+    """
+        Приводит хранящиеся траты по категориям к читаемому виду
+
+        :param dict[str, float] data: Данные
+        :rtype: str
+    """
+    categories = sorted(data.items(), key=get_category_sort_key)
+
+    return "\n".join([
+        f"{index}. {category}: {format_amount(amount)}"
+        for index, (category, amount) in enumerate(categories, start=1)
+    ])
 
 
 def is_same_month(first_date: Date, second_date: Date) -> bool:
@@ -609,24 +624,31 @@ def get_result_type(income: float, expenses: float) -> str:
     return "profit"
 
 
-def stats_handler(report_date: Date) -> None:
+def stats_handler(report_date: Date | str) -> str:
     """
         Вывод данных команды stats
 
-        :param tuple[int, int, int] report_date: Дата, за которую нужно получить отчет
-        :rtype: None
+        :param tuple[int, int, int] | str report_date: Дата, за которую нужно получить отчет
+        :rtype: str
     """
-    income, expenses = calculate_stats(report_date)
+    parsed_report_date = parse_date_argument(report_date)
+    if parsed_report_date is None:
+        return INCORRECT_DATE_MSG
+
+    income, expenses = calculate_stats(parsed_report_date)
     result_type = get_result_type(income, expenses)
     month_result = format_amount(abs(income - expenses))
 
-    print(f"Your statistics as of {beautify_date(report_date)}:")
-    print(f"Total capital: {format_amount(calculate_total_capital(report_date))} rubles")
-    print(f"This month, the {result_type} amounted to {month_result} rubles.")
-    print(f"Income: {format_amount(income)} rubles")
-    print(f"Expenses: {format_amount(expenses)} rubles")
-    print("\nDetails (category: amount):")
-    print_stats_by_categories(get_data(report_date))
+    return "\n".join([
+        f"Your statistics as of {beautify_date(parsed_report_date)}:",
+        f"Total capital: {format_amount(calculate_total_capital(parsed_report_date))} rubles",
+        f"This month, the {result_type} amounted to {month_result} rubles.",
+        f"Income: {format_amount(income)} rubles",
+        f"Expenses: {format_amount(expenses)} rubles",
+        "",
+        "Details (category: amount):",
+        get_stats_by_categories(get_data(parsed_report_date)),
+    ])
 
 
 def main() -> None:
