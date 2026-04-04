@@ -322,6 +322,36 @@ def cost_categories_handler() -> str:
     ])
 
 
+def parse_cost_command_args(args: list[str]) -> tuple[str, float, Date] | None:
+    """
+        Валидирует аргументы команды cost
+
+        :param list[str] args: Аргументы команды
+        :rtype: tuple[str, float, tuple[int, int, int]] | None
+    """
+    if len(args) == COST_ARGS_LENGTH:
+        category_name = args[0]
+        if is_category_exists(category_name):
+            amount = extract_amount(args[1])
+            if amount is not None:
+                date = extract_date(args[2])
+                if date is not None:
+                    return category_name, amount, date
+
+                print(INCORRECT_DATE_MSG)
+                return None
+
+            print(NONPOSITIVE_VALUE_MSG)
+            return None
+
+        print(NOT_EXISTS_CATEGORY)
+        print(cost_categories_handler())
+        return None
+
+    print(UNKNOWN_COMMAND_MSG)
+    return None
+
+
 def cost_listener(args: list[str]) -> None:
     """
         Обработка команды cost
@@ -335,27 +365,14 @@ def cost_listener(args: list[str]) -> None:
 
     if args[0].lower() == "categories" and len(args) == 1:
         print(cost_categories_handler())
-    elif len(args) != COST_ARGS_LENGTH:
-        print(UNKNOWN_COMMAND_MSG)
         return
 
-    elif not is_category_exists(args[0]):
-        print(NOT_EXISTS_CATEGORY)
-        print(cost_categories_handler())
+    parsed_args = parse_cost_command_args(args)
+    if parsed_args is None:
         return
 
-    else:
-        amount = extract_amount(args[1])
-        if amount is None:
-            print(NONPOSITIVE_VALUE_MSG)
-            return
-
-        date = extract_date(args[2])
-        if date is None:
-            print(INCORRECT_DATE_MSG)
-            return
-
-        print(cost_handler(args[0], amount, date))
+    category_name, amount, date = parsed_args
+    print(cost_handler(category_name, amount, date))
 
 
 def stats_listener(args: list[str]) -> None:
