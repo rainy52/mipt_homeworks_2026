@@ -11,7 +11,9 @@ OP_SUCCESS_MSG = "Added"
 AMOUNT_KEY = "amount"
 DATE_KEY = "date"
 CATEGORY_KEY = "category"
-ZERO_AMOUNT = 0e0
+INCOME_COMMAND = "income"
+COST_COMMAND = "cost"
+STATS_COMMAND = "stats"
 
 DATE_LENGTH = 3
 FEBRUARY_MONTH_NUMBER = 2
@@ -107,14 +109,40 @@ def extract_amount(amount: str) -> float | None:
         :rtype: float | None
     """
     normalized_amount = amount.strip().replace(",", ".")
-    try:
-        parsed_amount = float(normalized_amount)
-    except ValueError:
+    if not is_valid_float(normalized_amount):
         return None
-    else:
-        if parsed_amount <= 0:
-            return None
-        return parsed_amount
+
+    parsed_amount = float(normalized_amount)
+    if parsed_amount <= 0:
+        return None
+    return parsed_amount
+
+
+def is_valid_float(amount: str) -> bool:
+    """
+        Проверяет, что строка конвертируется в float (является числом)
+
+        :param str amount: Проверяемая строка
+        :rtype: bool
+    """
+    if not amount or amount.count(".") > 1:
+        return False
+
+    amount_parts = amount.split(".")
+    if len(amount_parts) == 1:
+        return amount_parts[0].isdigit()
+
+    integer_part, fractional_part = amount_parts
+    if not integer_part and not fractional_part:
+        return False
+
+    if integer_part and not integer_part.isdigit():
+        return False
+
+    if fractional_part and not fractional_part.isdigit():
+        return False
+
+    return True
 
 
 def parse_date_argument(maybe_date: Date | str) -> Date | None:
@@ -129,13 +157,14 @@ def parse_date_argument(maybe_date: Date | str) -> Date | None:
     return maybe_date
 
 
-def add_empty_transaction() -> None:
+def save_transaction(transaction: dict[str, Any]) -> None:
     """
-        Добавляет пустую транзакцию в хранилище
+        Сохраняет транзакцию в хранилище
 
+        :param dict[str, Any] transaction: Данные транзакции
         :rtype: None
     """
-    financial_transactions_storage.append({})
+    financial_transactions_storage.append(transaction)
 
 
 def save_income(amount: float, income_date: Date) -> None:
@@ -146,7 +175,7 @@ def save_income(amount: float, income_date: Date) -> None:
         :param tuple[int, int, int] income_date: Дата
         :rtype: None
     """
-    financial_transactions_storage.append({AMOUNT_KEY: amount, DATE_KEY: income_date})
+    save_transaction({AMOUNT_KEY: amount, DATE_KEY: income_date})
 
 
 def save_cost(category_name: str, amount: float, cost_date: Date) -> None:
@@ -158,7 +187,7 @@ def save_cost(category_name: str, amount: float, cost_date: Date) -> None:
         :param tuple[int, int, int] cost_date: Дата
         :rtype: None
     """
-    financial_transactions_storage.append({
+    save_transaction({
         CATEGORY_KEY: category_name,
         AMOUNT_KEY: amount,
         DATE_KEY: cost_date,
@@ -174,12 +203,12 @@ def income_handler(amount: float, income_date: Date | str) -> str:
         :rtype: str
     """
     if not isinstance(amount, (float, int)) or amount <= 0:
-        add_empty_transaction()
+        save_transaction({})
         return NONPOSITIVE_VALUE_MSG
 
     parsed_income_date = parse_date_argument(income_date)
     if parsed_income_date is None:
-        add_empty_transaction()
+        save_transaction({})
         return INCORRECT_DATE_MSG
 
     save_income(amount, parsed_income_date)
@@ -198,11 +227,11 @@ def listen(command: str) -> None:
         print(UNKNOWN_COMMAND_MSG)
         return
 
-    if command_line[0].lower() == "income":
+    if command_line[0].lower() == INCOME_COMMAND:
         income_listener(command_line[1:])
-    elif command_line[0].lower() == "cost":
+    elif command_line[0].lower() == COST_COMMAND:
         cost_listener(command_line[1:])
-    elif command_line[0].lower() == "stats":
+    elif command_line[0].lower() == STATS_COMMAND:
         stats_listener(command_line[1:])
     else:
         print(UNKNOWN_COMMAND_MSG)
@@ -267,16 +296,16 @@ def cost_handler(category_name: str, amount: float, income_date: Date | str) -> 
         :rtype: str
     """
     if not is_category_exists(category_name):
-        add_empty_transaction()
+        save_transaction({})
         return NOT_EXISTS_CATEGORY
 
     if not isinstance(amount, (float, int)) or amount <= 0:
-        add_empty_transaction()
+        save_transaction({})
         return NONPOSITIVE_VALUE_MSG
 
     parsed_income_date = parse_date_argument(income_date)
     if parsed_income_date is None:
-        add_empty_transaction()
+        save_transaction({})
         return INCORRECT_DATE_MSG
 
     save_cost(category_name, amount, parsed_income_date)
@@ -307,27 +336,28 @@ def cost_listener(args: list[str]) -> None:
 
     if args[0].lower() == "categories" and len(args) == 1:
         print(cost_categories_handler())
-    else:
-        if len(args) != COST_ARGS_LENGTH:
-            print(UNKNOWN_COMMAND_MSG)
-            return
+        return
 
-        if not is_category_exists(args[0]):
-            print(NOT_EXISTS_CATEGORY)
-            print(cost_categories_handler())
-            return
+    if len(args) != COST_ARGS_LENGTH:
+        print(UNKNOWN_COMMAND_MSG)
+        return
 
-        amount = extract_amount(args[1])
-        if amount is None:
-            print(NONPOSITIVE_VALUE_MSG)
-            return
+    if not is_category_exists(args[0]):
+        print(NOT_EXISTS_CATEGORY)
+        print(cost_categories_handler())
+        return
 
-        date = extract_date(args[2])
-        if date is None:
-            print(INCORRECT_DATE_MSG)
-            return
+    amount = extract_amount(args[1])
+    if amount is None:
+        print(NONPOSITIVE_VALUE_MSG)
+        return
 
-        print(cost_handler(args[0], amount, date))
+    date = extract_date(args[2])
+    if date is None:
+        print(INCORRECT_DATE_MSG)
+        return
+
+    print(cost_handler(args[0], amount, date))
 
 
 def stats_listener(args: list[str]) -> None:
@@ -487,7 +517,7 @@ def calculate_total_capital(report_date: Date) -> float:
 
         :rtype: float
     """
-    total_capital = ZERO_AMOUNT
+    total_capital = float(0)
     for transaction in financial_transactions_storage:
         if not has_transaction_date(transaction):
             continue
@@ -513,12 +543,12 @@ def calculate_income_expenses(transaction: dict[str, Any], date: Date) -> tuple[
         :rtype: tuple[float, float]
     """
     if not is_transaction_in_report_period(transaction, date):
-        return ZERO_AMOUNT, ZERO_AMOUNT
+        return float(0), float(0)
 
     amount = transaction[AMOUNT_KEY]
     if is_expense(transaction):
-        return ZERO_AMOUNT, amount
-    return amount, ZERO_AMOUNT
+        return float(0), amount
+    return amount, float(0)
 
 
 def get_data(report_date: Date) -> dict[str, float]:
@@ -537,7 +567,7 @@ def get_data(report_date: Date) -> dict[str, float]:
             continue
 
         child_category = get_child_category(transaction[CATEGORY_KEY])
-        category_total = data.get(child_category, ZERO_AMOUNT)
+        category_total = data.get(child_category, float(0))
         data[child_category] = category_total + transaction[AMOUNT_KEY]
     return data
 
@@ -560,8 +590,8 @@ def calculate_stats(date: Date) -> tuple[float, float]:
         :param tuple[int, int, int] date: Дата
         :rtype: tuple[float, float]
     """
-    total_income = ZERO_AMOUNT
-    total_expenses = ZERO_AMOUNT
+    total_income = float(0)
+    total_expenses = float(0)
     for transaction in financial_transactions_storage:
         income, expenses = calculate_income_expenses(transaction, date)
         total_income += income
