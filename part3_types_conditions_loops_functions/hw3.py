@@ -335,28 +335,27 @@ def cost_listener(args: list[str]) -> None:
 
     if args[0].lower() == "categories" and len(args) == 1:
         print(cost_categories_handler())
-        return
-
-    if len(args) != COST_ARGS_LENGTH:
+    elif len(args) != COST_ARGS_LENGTH:
         print(UNKNOWN_COMMAND_MSG)
         return
 
-    if not is_category_exists(args[0]):
+    elif not is_category_exists(args[0]):
         print(NOT_EXISTS_CATEGORY)
         print(cost_categories_handler())
         return
 
-    amount = extract_amount(args[1])
-    if amount is None:
-        print(NONPOSITIVE_VALUE_MSG)
-        return
+    else:
+        amount = extract_amount(args[1])
+        if amount is None:
+            print(NONPOSITIVE_VALUE_MSG)
+            return
 
-    date = extract_date(args[2])
-    if date is None:
-        print(INCORRECT_DATE_MSG)
-        return
+        date = extract_date(args[2])
+        if date is None:
+            print(INCORRECT_DATE_MSG)
+            return
 
-    print(cost_handler(args[0], amount, date))
+        print(cost_handler(args[0], amount, date))
 
 
 def stats_listener(args: list[str]) -> None:
